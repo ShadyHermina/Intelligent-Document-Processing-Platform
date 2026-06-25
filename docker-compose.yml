@@ -1,0 +1,311 @@
+# docker-compose.yml
+# Defines all 7 containers for the Intelligent Document Processing Platform.
+# All containers join one shared bridge network: idp_network.
+# Environment variables are loaded from .env automatically by Compose.
+
+services:
+
+  # ── PostgreSQL ──────────────────────────────────────────────────
+  # Official image from Docker Hub. No custom Dockerfile needed.
+  # The postgres image reads POSTGRES_USER, POSTGRES_PASSWORD, and
+  # POSTGRES_DB on first boot and creates the user and database.
+  # On subsequent boots it ignores these variables — the data
+  # already exists in the volume.
+  postgres:
+    image: postgres:16-alpine
+    # container_name gives the running container a fixed, predictable
+    # name. Without it, Compose generates a name like
+    # "intelligent-document-processing-platform-postgres-1".
+    # A fixed name makes docker exec and log commands easier to type.
+    container_name: postgres
+    environment:
+      # ${VAR} syntax pulls values from .env.
+      # These three variables are the only configuration postgres:16
+      # needs to initialize a fresh database.
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      # Named volume: postgres_data persists the database files between
+      # container restarts and rebuilds. Without this, every "docker
+      # compose down" wipes the entire database.
+      # Left side of colon: the named volume (defined at bottom of file).
+      # Right side: the path inside the container where Postgres stores data.
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      # pg_isready is a Postgres utility that probes whether the server
+      # is accepting connections. It is built into the postgres image —
+      # no curl needed.
+      # -U specifies the username to connect as.
+      # -d specifies the database to probe.
+      test: ["CMD", "pg_isready", "-U", "${POSTGRES_USER}", "-d", "${POSTGRES_DB}"]
+      # interval: how often to run the health check.
+      interval: 10s
+      # timeout: how long to wait for the check command to complete
+      # before declaring it failed.
+      timeout: 5s
+      # retries: how many consecutive failures before marking the
+      # container "unhealthy".
+      retries: 5
+      # start_period: grace period after container start during which
+      # failed health checks do not count toward the retry limit.
+      # Postgres takes a few seconds to initialize on first boot.
+      start_period: 10s
+    networks:
+      - idp_network
+    # restart: unless-stopped means Docker automatically restarts this
+    # container if it crashes, but not if you explicitly stopped it with
+    # "docker compose stop". Alternative: "always" restarts even after
+    # explicit stops. "unless-stopped" is the correct choice for dev —
+    # it respects intentional stops.
+    restart: unless-stopped
+
+
+  # ── Qdrant ─────────────────────────────────────────────────────
+  # Official Qdrant image. No custom Dockerfile needed.
+  # Qdrant is the vector database that stores document embeddings.
+  # It exposes two ports internally: 6333 (HTTP REST API) and
+  # 6334 (gRPC API). We use HTTP only in this architecture.
+  qdrant:
+    image: qdrant/qdrant:v1.13.4
+    container_name: qdrant
+    volumes:
+      # Persist Qdrant's vector index files between restarts.
+      # Without this, all embeddings are lost on every restart.
+      - qdrant_storage:/qdrant/storage
+    healthcheck:
+      # Performs a raw TCP connection without any external tool.
+      # It is a bash built-in feature — when bash sees a redirect 
+      # to that path it opens a TCP connection to the specified host and port. 
+      # If the connection succeeds, the command exits 0 (healthy). 
+      # If the port is not listening, it exits non-zero (unhealthy). 
+      # No external binary required — bash itself is the only dependency, 
+      # and bash is always present.
+      test: ["CMD-SHELL", "bash -c 'echo > /dev/tcp/localhost/6333'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    ports:
+      # 6333 is published to the Windows host for direct debugging and
+      # inspection during development — curl, Qdrant REST dashboard, etc.
+      # This is a development convenience only. In production this block
+      # is removed entirely: Qdrant becomes reachable only from containers
+      # on idp_network, identical to how Postgres is configured today.
+      # Removing it later requires deleting these two lines and nothing else —
+      # inter-container traffic (fastapi_a/b → qdrant) uses idp_network
+      # directly and is unaffected by whether this host mapping exists.
+      - "${QDRANT_PORT}:6333"
+    networks:
+      - idp_network
+    restart: unless-stopped
+
+
+  # ── FastMCP ────────────────────────────────────────────────────
+  # Built from fastmcp/Dockerfile.
+  # No dependency on postgres or qdrant at this phase —
+  # the stub server.py does not connect to anything.
+  # Real tool implementations in later phases will add those dependencies.
+  fastmcp:
+    build:
+      # context: the folder Docker uses as the build root.
+      # All COPY instructions in the Dockerfile are relative to this path.
+      context: ./fastmcp
+      # dockerfile: which file inside the context to use as the recipe.
+      # Explicit even though "Dockerfile" is the default — removes ambiguity.
+      dockerfile: Dockerfile
+    container_name: fastmcp
+    environment:
+      INSTANCE_ID: fastmcp
+      APP_ENV: ${APP_ENV}
+    healthcheck:
+      test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - idp_network
+    restart: unless-stopped
+
+
+  # ── FastAPI instance A ─────────────────────────────────────────
+  fastapi_a:
+    build:
+      context: ./fastapi
+      dockerfile: Dockerfile
+    container_name: fastapi_a
+    environment:
+      # INSTANCE_ID is what makes the two FastAPI containers distinct.
+      # The /health endpoint returns this value so we can confirm
+      # round-robin load balancing is working in the logs.  
+      INSTANCE_ID: fastapi_a
+      APP_ENV: ${APP_ENV}
+      LOG_LEVEL: ${LOG_LEVEL}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      QDRANT_HOST: ${QDRANT_HOST}
+      QDRANT_PORT: ${QDRANT_PORT}
+      # PYTHONPATH tells Python where to look for importable packages
+      # beyond the standard site-packages. /app is the container's
+      # working directory — adding it here means "from shared.qdrant_store
+      # import ..." resolves to /app/shared/qdrant_store.py, which is
+      # bind-mounted from ./shared on the host. No naming collision with
+      # the installed qdrant-client package, which is imported as
+      # "from qdrant_client import QdrantClient" — different name entirely.
+      PYTHONPATH: /app
+    volumes:
+      # Bind mount: ./shared on the Windows host maps to /app/shared
+      # inside the container. Changes to shared/ files are reflected
+      # immediately without rebuilding the image — critical for a
+      # module that multiple phases will iterate on.
+      # Named volumes (like postgres_data) are managed by Docker.
+      # Bind mounts (like this one) map a specific host path directly.
+      # We use a bind mount here because shared/ contains source code
+      # we edit live, not persistent data Docker should manage.
+      - ./shared:/app/shared
+    depends_on:
+      # condition: service_healthy means Compose waits until postgres
+      # and qdrant pass their health checks before starting fastapi_a.
+      # This prevents connection errors on startup.
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - idp_network
+    restart: unless-stopped
+
+
+  # ── FastAPI instance B ─────────────────────────────────────────
+  # Identical to fastapi_a in every way except container_name and
+  # INSTANCE_ID. Same image, same build context, same dependencies.
+  # This is horizontal scaling by configuration, not by code duplication.
+  fastapi_b:
+    build:
+      context: ./fastapi
+      dockerfile: Dockerfile
+    container_name: fastapi_b
+    environment:
+      INSTANCE_ID: fastapi_b
+      APP_ENV: ${APP_ENV}
+      LOG_LEVEL: ${LOG_LEVEL}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      QDRANT_HOST: ${QDRANT_HOST}
+      QDRANT_PORT: ${QDRANT_PORT}
+      PYTHONPATH: /app
+    volumes:
+      - ./shared:/app/shared
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+    networks:
+      - idp_network
+    restart: unless-stopped
+
+
+  # ── Streamlit ──────────────────────────────────────────────────
+  streamlit:
+    build:
+      context: ./streamlit
+      dockerfile: Dockerfile
+    container_name: streamlit
+    environment:
+      APP_ENV: ${APP_ENV}
+    depends_on:
+      # Streamlit depends on both FastAPI instances being healthy
+      # before it starts. In later phases the frontend will call
+      # the API on load — we want the API ready before the UI is up.
+      fastapi_a:
+        condition: service_healthy
+      fastapi_b:
+        condition: service_healthy
+    healthcheck:
+      # Streamlit's health check endpoint.
+      # /_stcore/health is Streamlit's built-in internal health route,
+      # available since Streamlit 1.x. It returns 200 when the server
+      # is ready. We use this instead of the root path because the
+      # root path involves rendering the full app — the health route
+      # is a lightweight dedicated probe.
+      test: ["CMD", "curl", "-f", "http://localhost:8501/_stcore/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - idp_network
+    restart: unless-stopped
+
+
+  # ── Nginx ──────────────────────────────────────────────────────
+  # Nginx is the last service to become ready — it depends on both
+  # FastAPI instances and Streamlit being healthy. There is no point
+  # opening the front door before the rooms behind it are ready.
+  nginx:
+    build:
+      context: ./nginx
+      dockerfile: Dockerfile
+    container_name: nginx
+    ports:
+      # Nginx is the primary entry point for all external HTTP traffic.
+      # Qdrant also publishes port 6333 to the host for direct debugging
+      # during development — see the qdrant service ports block above.
+      # All other inter-container communication happens over idp_network
+      # using container names as hostnames, with no host port exposure.
+      - "80:80"
+    depends_on:
+      fastapi_a:
+        condition: service_healthy
+      fastapi_b:
+        condition: service_healthy
+      streamlit:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    networks:
+      - idp_network
+    restart: unless-stopped
+
+
+# ── Networks ────────────────────────────────────────────────────
+networks:
+  idp_network:
+    # driver: bridge is the default Docker network driver.
+    # A bridge network creates a private internal network that all
+    # listed containers join. Containers on the same bridge network
+    # can reach each other by container name (DNS resolution).
+    # Containers NOT on the network cannot reach them at all.
+    # Alternative: host networking (container shares the host's
+    # network stack). Never use host networking in multi-container
+    # setups — it destroys network isolation entirely.
+    driver: bridge
+
+
+# ── Volumes ─────────────────────────────────────────────────────
+volumes:
+  # Named volumes are managed by Docker, not by the host filesystem.
+  # Docker stores them in its own internal storage area.
+  # Alternative: bind mounts ("./postgres/data:/var/lib/postgresql/data")
+  # bind mounts to a specific host path. Named volumes are preferred
+  # for database storage because Docker manages permissions and
+  # lifecycle automatically. Bind mounts are preferred for source
+  # code that you want to edit live (not applicable here).
+  postgres_data:
+  qdrant_storage:

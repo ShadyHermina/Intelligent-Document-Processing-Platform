@@ -1,0 +1,41 @@
+# ── Secrets ──────────────────────────────────
+.env
+
+# ── Python bytecode ──────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+
+# ── Virtual environments ──────────────────────
+.venv/
+venv/
+env/
+
+# ── Python packaging artifacts ────────────────
+*.egg-info/
+dist/
+build/
+
+# ── Runtime data volumes ──────────────────────
+# These folders will be created automatically by Docker
+# when Postgres and Qdrant mount their data directories.
+# They contain binary database files — never commit these.
+postgres/data/
+qdrant/storage/
+
+# ── Logs ─────────────────────────────────────
+*.log
+logs/
+
+# ── OS noise ─────────────────────────────────
+.DS_Store
+Thumbs.db
+
+# ── VS Code workspace settings ───────────────
+# .vscode/ is intentionally NOT ignored.
+# Sharing launch.json and settings.json helps
+# teammates get a consistent dev experience.
+# If you have personal-only settings, add:
+# .vscode/settings.json
