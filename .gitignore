@@ -39,3 +39,7 @@ Thumbs.db
 # teammates get a consistent dev experience.
 # If you have personal-only settings, add:
 # .vscode/settings.json
+
+
+# ── Interview Documents ───────────────
+Interview-docs/*
