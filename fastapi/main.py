@@ -12,7 +12,7 @@
 
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 
 from core.config import get_settings
 from core.database import init_db_pool, close_db_pool, get_pool
@@ -180,3 +180,33 @@ async def root():
         "instance": settings.instance_id,
         "docs": "/docs",
     }
+
+# ---------------------------------------------------------------------------
+# Temporary debug endpoint — REMOVE before Phase 5
+# ---------------------------------------------------------------------------
+
+@app.get("/debug/headers")
+async def debug_headers(request: Request):
+    """
+    Returns all headers FastAPI received from Nginx.
+    Used to verify real client IP is being forwarded correctly.
+    Remove this endpoint after Phase 4 verification is complete.
+    """
+    return {
+        "headers": dict(request.headers),
+        "client_host": request.client.host,
+    }
+
+from fastapi import WebSocket
+
+@app.websocket("/ws/echo")
+async def websocket_echo(websocket: WebSocket):
+    """
+    Temporary WebSocket echo endpoint for Phase 4 verification only.
+    Accepts a connection, receives one message, echoes it back, then closes.
+    Remove this endpoint after Phase 4 verification is complete.
+    """
+    await websocket.accept()
+    message = await websocket.receive_text()
+    await websocket.send_text(f"echo: {message}")
+    await websocket.close()
