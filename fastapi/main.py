@@ -121,7 +121,7 @@ app = FastAPI(
 # Session router will be registered here in the next step.
 # Placeholder comment so the structure is clear before the router exists.
 
-app.include_router(session_router, prefix="/api/session", tags=["session"])
+app.include_router(session_router, prefix="/session", tags=["session"])
 
 
 # ---------------------------------------------------------------------------
@@ -182,7 +182,7 @@ async def root():
     }
 
 # ---------------------------------------------------------------------------
-# Temporary debug endpoint — REMOVE before Phase 5
+# Temporary debug endpoint
 # ---------------------------------------------------------------------------
 
 @app.get("/debug/headers")
@@ -199,7 +199,7 @@ async def debug_headers(request: Request):
 
 from fastapi import WebSocket
 
-@app.websocket("/ws/echo")
+@app.websocket("/echo")
 async def websocket_echo(websocket: WebSocket):
     """
     Temporary WebSocket echo endpoint for Phase 4 verification only.
@@ -210,3 +210,4 @@ async def websocket_echo(websocket: WebSocket):
     message = await websocket.receive_text()
     await websocket.send_text(f"echo: {message}")
     await websocket.close()
+# ---------------------------------------------------------------------------
