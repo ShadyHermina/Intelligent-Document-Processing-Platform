@@ -153,6 +153,11 @@ services:
       # the installed qdrant-client package, which is imported as
       # "from qdrant_client import QdrantClient" — different name entirely.
       PYTHONPATH: /app
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
     volumes:
       # Bind mount: ./shared on the Windows host maps to /app/shared
       # inside the container. Changes to shared/ files are reflected
@@ -199,6 +204,11 @@ services:
       QDRANT_HOST: ${QDRANT_HOST}
       QDRANT_PORT: ${QDRANT_PORT}
       PYTHONPATH: /app
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
     volumes:
       - ./shared:/app/shared
     depends_on:

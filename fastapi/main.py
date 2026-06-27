@@ -1,74 +1,182 @@
-# main.py — FastAPI backend stub
+# fastapi/main.py
 #
-# Phase 0 purpose: start cleanly, respond to /health,
-# and identify which instance is responding.
-# No business logic. No database calls. No auth.
+# Application entry point.
+#
+# Three responsibilities only:
+#   1. Define the lifespan context manager (startup + shutdown)
+#   2. Create the FastAPI app object with lifespan attached
+#   3. Register routers
+#
+# No business logic. No SQL. No endpoint handlers.
+# All of that lives in routers/ and dependencies/.
 
-import os
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
-from pydantic import BaseModel
 
-# FastAPI() creates the ASGI application object.
-# The title and version appear in the auto-generated OpenAPI docs
-# at /docs — useful for debugging later phases.
+from core.config import get_settings
+from core.database import init_db_pool, close_db_pool, get_pool
+
+from routers.session import router as session_router
+
+
+# ---------------------------------------------------------------------------
+# Lifespan
+# ---------------------------------------------------------------------------
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Manage application startup and shutdown.
+
+    Everything before yield runs once when uvicorn starts the application,
+    before the first request is accepted.
+
+    Everything after yield runs once when uvicorn receives a shutdown signal
+    (SIGTERM from docker compose down, or Ctrl+C in development), after the
+    last in-flight request completes.
+
+    Why asynccontextmanager and not @app.on_event("startup")?
+
+    @app.on_event("startup") and @app.on_event("shutdown") are the older
+    FastAPI pattern. They still work but are deprecated as of FastAPI 0.93.
+    The lifespan context manager replaces both with a single function that
+    keeps startup and shutdown logic visually together. It also makes the
+    relationship between setup and teardown explicit — the same function
+    that opens a resource closes it, in the same visual scope.
+
+    Why does lifespan receive app as a parameter?
+
+    FastAPI passes the app instance to the lifespan function automatically.
+    We forward it to init_db_pool() and close_db_pool() so they can attach
+    and retrieve the pool from app.state without importing the app object
+    directly (which would create a circular import).
+    """
+    settings = get_settings()
+
+    print(
+        f"[startup] IDPP API starting — "
+        f"instance={settings.instance_id} "
+        f"env={settings.app_env}"
+    )
+
+    # ---- Startup ----
+    await init_db_pool(app)
+    # init_db_pool opens 2-5 asyncpg connections to PostgreSQL and stores
+    # the pool on app.state.db_pool. From this point forward, any request
+    # handler that calls get_pool(app) will receive the pool immediately.
+    # If this call fails (wrong credentials, PostgreSQL unreachable), the
+    # exception propagates here and uvicorn aborts startup — the application
+    # never opens for traffic, which is the correct behavior. A server that
+    # starts without a database connection would serve 500 errors to every
+    # request until someone noticed.
+
+    print("[startup] complete — accepting requests")
+
+    yield
+    # ---- Application runs here ----
+    # uvicorn is now accepting requests.
+    # This yield suspends the lifespan coroutine until shutdown is triggered.
+    # The event loop is free to handle requests while we wait here.
+
+    # ---- Shutdown ----
+    print("[shutdown] IDPP API shutting down ...")
+    await close_db_pool(app)
+    # close_db_pool waits for any in-flight queries to complete, then sends
+    # proper disconnect messages to PostgreSQL before closing the TCP
+    # connections. This prevents PostgreSQL from treating our connections
+    # as crashed clients and holding them open unnecessarily.
+
+    print("[shutdown] complete")
+
+
+# ---------------------------------------------------------------------------
+# Application
+# ---------------------------------------------------------------------------
+
+settings = get_settings()
+# We call get_settings() here to read the instance_id for the app title.
+# Because of lru_cache, this is the same Settings object that lifespan
+# and all routers will use — no re-reading of environment variables.
+
 app = FastAPI(
     title="Intelligent Document Processing Platform — API",
-    version="0.1.0"
+    version="0.3.0",
+    description=(
+        "Secure multi-tenant document processing API. "
+        f"Instance: {settings.instance_id}"
+    ),
+    lifespan=lifespan,
+    # lifespan= is how we attach our startup/shutdown logic to this app.
+    # FastAPI stores the lifespan and calls it when uvicorn starts and stops.
+    # Without this parameter, the lifespan function defined above would
+    # exist but never be called — a silent misconfiguration.
 )
 
-# os.getenv reads environment variables injected by Docker Compose.
-# INSTANCE_ID will be set to "fastapi_a" or "fastapi_b" in
-# docker-compose.yml so we can tell the two instances apart in logs.
-# LOG_LEVEL is read here for reference — uvicorn actually reads it
-# from its own CLI flag, but having it accessible in Python lets us
-# use it for application-level logging configuration in later phases.
-INSTANCE_ID = os.getenv("INSTANCE_ID", "fastapi_unknown")
-LOG_LEVEL = os.getenv("LOG_LEVEL", "info")
+
+# ---------------------------------------------------------------------------
+# Routers
+# ---------------------------------------------------------------------------
+
+# Session router will be registered here in the next step.
+# Placeholder comment so the structure is clear before the router exists.
+
+app.include_router(session_router, prefix="/api/session", tags=["session"])
 
 
-# ── Response model ────────────────────────────────────────────────
-# Pydantic BaseModel defines the shape of the JSON response.
-# FastAPI uses this to:
-# 1. Serialize the return value to JSON automatically
-# 2. Generate the correct schema in /docs
-# 3. Validate the response structure at runtime
-#
-# Alternative: return a plain dict — {"status": "ok"}.
-# That works, but gives up type safety and OpenAPI documentation.
-# We use a model even here so the pattern is established from day one.
-class HealthResponse(BaseModel):
-    status: str
-    instance: str
+# ---------------------------------------------------------------------------
+# Built-in endpoints
+# ---------------------------------------------------------------------------
+
+@app.get("/health")
+async def health_check():
+    """
+    Liveness probe used by Docker Compose health checks and Nginx.
+
+    Returns instance identity so we can confirm round-robin load
+    balancing is distributing requests across both FastAPI instances.
+
+    Why async def instead of def?
+
+    FastAPI can handle both sync and async endpoint functions. We use
+    async def here for consistency with the rest of the codebase — all
+    endpoints that do I/O will be async, so making the health check
+    async establishes the pattern even though this specific endpoint
+    does no I/O.
+
+    Why not check database connectivity here?
+
+    A health check that queries the database couples liveness to database
+    availability. If the database goes down briefly, all health checks
+    fail, Nginx marks both FastAPI instances as unhealthy, and the entire
+    platform goes dark — even though FastAPI itself is running fine.
+    Liveness (is the process alive?) and readiness (can it serve traffic?)
+    are separate concerns. This endpoint answers liveness only.
+    In Phase 9 (Observability) we add a separate /ready endpoint that
+    checks database connectivity.
+    """
+    pool = get_pool(app)
+    # We call get_pool() here not to use a connection, but to confirm
+    # the pool was successfully initialized at startup. If get_pool()
+    # raises RuntimeError, the health check returns 500, which correctly
+    # signals that startup did not complete successfully.
+    # We do not acquire a connection — that would consume a pool slot
+    # on every health check poll (every 10 seconds per docker-compose.yml).
+
+    return {
+        "status": "ok",
+        "instance": settings.instance_id,
+        "pool_size": pool.get_size(),
+        # pool.get_size() returns the current number of open connections.
+        # Seeing this in the health response confirms the pool is alive
+        # and tells us how many connections are currently established.
+    }
 
 
-# ── Health endpoint ───────────────────────────────────────────────
-# @app.get registers a GET handler at the path /health.
-# response_model=HealthResponse tells FastAPI to validate and
-# serialize the return value against the HealthResponse schema.
-#
-# Why /health and not /api/health?
-# Nginx will handle the /api prefix stripping before the request
-# reaches this container. From FastAPI's perspective the path
-# is always /health. This keeps the FastAPI app unaware of how
-# it is deployed — it does not need to know it sits behind a proxy.
-# This is the correct separation of concerns.
-@app.get("/health", response_model=HealthResponse)
-def health_check():
-    # Returns the status and which instance answered.
-    # When we run repeated curl calls through Nginx, we will see
-    # "instance" alternate between "fastapi_a" and "fastapi_b"
-    # in the response — confirming round-robin load balancing works.
-    return HealthResponse(status="ok", instance=INSTANCE_ID)
-
-
-# ── Root endpoint ─────────────────────────────────────────────────
-# A minimal root handler so hitting /api/ in the browser returns
-# something readable instead of a 404.
-# Not part of the Definition of Done — just reduces confusion.
 @app.get("/")
-def root():
+async def root():
     return {
         "message": "IDP Platform API",
-        "instance": INSTANCE_ID,
-        "docs": "/docs"
+        "instance": settings.instance_id,
+        "docs": "/docs",
     }
