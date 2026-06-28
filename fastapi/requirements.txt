@@ -7,3 +7,64 @@ asyncpg==0.29.0
 python-dotenv==1.1.0
 httpx==0.28.1
 openai==1.78.0
+
+# ── Phase 6: Document parsing ─────────────────────────────────────────────
+
+pdfplumber==0.11.4
+# PDF text and layout extraction. Chosen over PyMuPDF (fitz) because
+# pdfplumber exposes bounding boxes for text regions, tables, and images
+# as first-class objects — exactly what Level 1 structure-aware splitting
+# needs. PyMuPDF is faster but its table detection is weaker and its
+# API surface is larger than we need. pypdf is text-only with no layout
+# awareness — ruled out immediately.
+
+python-docx==1.1.2
+# DOCX parsing via the Open XML SDK. The only maintained pure-Python
+# library for reading paragraph styles (Heading 1, Heading 2) and
+# iterating table rows — both required by Level 1 DOCX splitting.
+# No alternative exists for style-aware DOCX parsing in Python.
+
+openpyxl==3.1.5
+# XLSX reading. Required for sheet iteration, row-group detection, and
+# header extraction. xlrd only supports the legacy .xls format — ruled
+# out. pandas could read XLSX but adds a large dependency for a task
+# openpyxl handles directly and more transparently.
+
+# ── Phase 6: Semantic chunking ────────────────────────────────────────────
+
+sentence-transformers==3.4.1
+# Provides SentenceTransformer class and the all-MiniLM-L6-v2 model.
+# Used exclusively for Level 2 topic-transition detection — local CPU
+# inference, no API calls, no cost per sentence. The model (~80MB) is
+# downloaded once at image build time (or on first startup if not cached).
+# Alternative: spaCy sentence vectors — smaller but weaker semantic signal.
+# Alternative: OpenAI embeddings — costs money per sentence and would
+# double embedding costs since we already use OpenAI for final chunk vectors.
+
+nltk==3.9.1
+# Sentence tokenization via nltk.sent_tokenize(). Handles abbreviations
+# correctly (e.g. "Dr. Smith joined Acme Corp. in 2020." is one sentence,
+# not two). Naive period splitting produces incorrect boundaries on any
+# document containing titles, abbreviations, or decimal numbers.
+# spaCy also tokenizes sentences correctly but is a much heavier install.
+# nltk is the minimal correct solution for this specific task.
+
+scikit-learn==1.6.1
+# Provides cosine_similarity() for Level 2 sliding window comparison.
+# We import only sklearn.metrics.pairwise.cosine_similarity — one function
+# from a large library. Alternative: implement cosine similarity manually
+# with numpy (dot product divided by product of norms). The manual version
+# is ~5 lines and has no extra dependency. We use scikit-learn because it
+# is already a transitive dependency of sentence-transformers, so we pay
+# zero additional install cost and get a battle-tested implementation.
+
+# ── Phase 6: Token counting ───────────────────────────────────────────────
+
+tiktoken==0.9.0
+# OpenAI's tokenizer library. Used for Level 3 size guardrails with the
+# cl100k_base encoding — the exact tokenizer used by text-embedding-3-small.
+# This guarantees that "400 tokens" in our guardrail means exactly 400
+# tokens from OpenAI's perspective, not an approximation. Alternative:
+# character-count heuristics (~4 chars per token) — fast but imprecise,
+# could produce chunks that exceed the embedding model's context window
+# in edge cases with dense technical text.

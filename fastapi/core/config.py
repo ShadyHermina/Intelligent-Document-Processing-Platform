@@ -85,6 +85,25 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     session_ttl_hours: int = 8
 
+    # ------------------------------------------------------------------
+    # Chunking — Phase 6
+    # CHUNK_SIMILARITY_THRESHOLD controls Level 2 of the three-level
+    # chunking pipeline. It is the cosine similarity score below which
+    # two adjacent sentences are considered to have drifted to a new
+    # topic, triggering a chunk boundary cut.
+    #
+    # Range:  0.0 (cut everywhere) to 1.0 (never cut)
+    # Default 0.55: empirically reasonable for mixed enterprise documents.
+    #   Lower values (e.g. 0.4) → larger chunks, more topic mixing allowed
+    #   Higher values (e.g. 0.7) → smaller chunks, stricter topic coherence
+    #
+    # Tunable without code changes: add
+    #   CHUNK_SIMILARITY_THRESHOLD=0.6
+    # to docker-compose.yml under fastapi_a and fastapi_b environment
+    # blocks, then restart those containers.
+    # ------------------------------------------------------------------
+    chunk_similarity_threshold: float = 0.55
+
     class Config:
         # env_file: where to look for a .env file when environment variables
         # are not already present in the process. This path is relative to
