@@ -108,16 +108,21 @@ services:
   # Real tool implementations in later phases will add those dependencies.
   fastmcp:
     build:
-      # context: the folder Docker uses as the build root.
-      # All COPY instructions in the Dockerfile are relative to this path.
       context: ./fastmcp
-      # dockerfile: which file inside the context to use as the recipe.
-      # Explicit even though "Dockerfile" is the default — removes ambiguity.
       dockerfile: Dockerfile
     container_name: fastmcp
     environment:
       INSTANCE_ID: fastmcp
       APP_ENV: ${APP_ENV}
+      PYTHONPATH: /app
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      QDRANT_HOST: ${QDRANT_HOST}
+      QDRANT_PORT: ${QDRANT_PORT}
+    volumes:
+      - ./shared:/app/shared
+    depends_on:
+      qdrant:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "python", "-c", "import socket; s = socket.socket(); s.connect(('localhost', 8080)); s.close()"]
       interval: 10s
