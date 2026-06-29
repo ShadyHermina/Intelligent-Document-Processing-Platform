@@ -18,7 +18,9 @@ from core.config import get_settings
 from core.database import init_db_pool, close_db_pool, get_pool
 
 from routers.session import router as session_router
+from routers.documents import router as documents_router
 
+from sentence_transformers import SentenceTransformer
 
 # ---------------------------------------------------------------------------
 # Lifespan
@@ -61,6 +63,7 @@ async def lifespan(app: FastAPI):
     )
 
     # ---- Startup ----
+
     await init_db_pool(app)
     # init_db_pool opens 2-5 asyncpg connections to PostgreSQL and stores
     # the pool on app.state.db_pool. From this point forward, any request
@@ -70,6 +73,25 @@ async def lifespan(app: FastAPI):
     # never opens for traffic, which is the correct behavior. A server that
     # starts without a database connection would serve 500 errors to every
     # request until someone noticed.
+
+
+    app.state.st_model = SentenceTransformer("all-MiniLM-L6-v2")
+    # Load the local sentence embedding model used by Level 2 of the
+    # three-level chunking pipeline (semantic topic-transition detection).
+    #
+    # Why import inside lifespan and not at module level?
+    # sentence_transformers pulls in PyTorch — a large library. Importing
+    # it at module level would slow every script that imports from main.py.
+    # Importing inside lifespan defers the cost to startup only.
+    #
+    # Why app.state and not a module-level variable?
+    # app.state is scoped to the app instance — test cases that create
+    # isolated app instances get isolated model state. A module-level
+    # variable would be shared across all instances in the same process.
+    #
+    # This runs before yield — before FastAPI accepts any requests.
+    # Every IngestorAgent call finds app.state.st_model already populated.
+    print("[startup] SentenceTransformer loaded — all-MiniLM-L6-v2")
 
     print("[startup] complete — accepting requests")
 
@@ -118,10 +140,8 @@ app = FastAPI(
 # Routers
 # ---------------------------------------------------------------------------
 
-# Session router will be registered here in the next step.
-# Placeholder comment so the structure is clear before the router exists.
-
-app.include_router(session_router, prefix="/session", tags=["session"])
+app.include_router(session_router,   prefix="/session",   tags=["session"])
+app.include_router(documents_router, prefix="/documents", tags=["documents"])
 
 
 # ---------------------------------------------------------------------------
