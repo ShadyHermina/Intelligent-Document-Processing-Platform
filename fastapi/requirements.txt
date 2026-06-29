@@ -7,6 +7,10 @@ asyncpg==0.29.0
 python-dotenv==1.1.0
 httpx==0.28.1
 openai==1.78.0
+python-multipart==0.0.20
+# Required by FastAPI to parse multipart/form-data requests.
+# UploadFile and File(...) in documents.py depend on this library.
+# Not needed in earlier phases — session router uses JSON bodies only.
 
 # ── Phase 6: Document parsing ─────────────────────────────────────────────
 
