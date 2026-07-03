@@ -118,9 +118,17 @@ services:
       OPENAI_API_KEY: ${OPENAI_API_KEY}
       QDRANT_HOST: ${QDRANT_HOST}
       QDRANT_PORT: ${QDRANT_PORT}
+      # PostgreSQL access — added in Phase 8.
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: "5432"
     volumes:
       - ./shared:/app/shared
     depends_on:
+      postgres:
+        condition: service_healthy
       qdrant:
         condition: service_healthy
     healthcheck:
