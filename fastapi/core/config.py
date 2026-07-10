@@ -104,6 +104,29 @@ class Settings(BaseSettings):
     # ------------------------------------------------------------------
     chunk_similarity_threshold: float = 0.55
 
+    # ------------------------------------------------------------------
+    # Phase 9 — RAG chat pipeline
+    # RERANKER_MODEL: HuggingFace model identifier for the cross-encoder.
+    #   Loaded once at startup via load_reranker() in lifespan.
+    #   Changing this value requires a container rebuild only if the new
+    #   model is not already cached — otherwise a restart suffices.
+    # CHAT_HISTORY_LIMIT: maximum number of message objects kept in the
+    #   in-memory conversation history per WebSocket connection.
+    #   10 objects = 5 turns (user + assistant pairs).
+    #   Prevents context window overflow on long sessions.
+    # TOP_K_RETRIEVAL: how many candidate chunks Qdrant returns per query.
+    #   Must match the top_k sent to query_knowledge_base FastMCP tool.
+    #   20 is the value locked in Phase 8 design.
+    # TOP_K_RERANK: how many chunks survive reranking and are passed to
+    #   the LLM as context. 5 gives ~1500 tokens of context at 300
+    #   tokens per chunk — substantial signal without dominating the
+    #   GPT-4o context window.
+    # ------------------------------------------------------------------
+    reranker_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    chat_history_limit: int = 10
+    top_k_retrieval: int = 20
+    top_k_rerank: int = 5
+
     class Config:
         # env_file: where to look for a .env file when environment variables
         # are not already present in the process. This path is relative to

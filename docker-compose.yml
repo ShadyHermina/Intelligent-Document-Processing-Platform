@@ -171,10 +171,14 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
-      CHUNK_SIMILARITY_THRESHOLD: "0.55"
       # Level 2 chunking threshold. Cosine similarity below this value
       # triggers a topic boundary cut between adjacent sentences.
       # Default 0.55. Override here to tune without touching code.
+      CHUNK_SIMILARITY_THRESHOLD: "0.55"
+      RERANKER_MODEL: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+      CHAT_HISTORY_LIMIT: "10"
+      TOP_K_RETRIEVAL: "20"
+      TOP_K_RERANK: "5"
     volumes:
       # Bind mount: ./shared on the Windows host maps to /app/shared
       # inside the container. Changes to shared/ files are reflected
@@ -226,10 +230,14 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
       POSTGRES_HOST: postgres
       POSTGRES_PORT: "5432"
-      CHUNK_SIMILARITY_THRESHOLD: "0.55"
       # Level 2 chunking threshold. Cosine similarity below this value
       # triggers a topic boundary cut between adjacent sentences.
       # Default 0.55. Override here to tune without touching code.
+      CHUNK_SIMILARITY_THRESHOLD: "0.55"
+      RERANKER_MODEL: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+      CHAT_HISTORY_LIMIT: "10"
+      TOP_K_RETRIEVAL: "20"
+      TOP_K_RERANK: "5"
     volumes:
       - ./shared:/app/shared
     depends_on:

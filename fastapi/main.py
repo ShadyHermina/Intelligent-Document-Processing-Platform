@@ -21,6 +21,8 @@ from routers.session import router as session_router
 from routers.documents import router as documents_router
 
 from sentence_transformers import SentenceTransformer
+from core.reranker import load_reranker
+from routers.chat import router as chat_router
 
 # ---------------------------------------------------------------------------
 # Lifespan
@@ -93,6 +95,18 @@ async def lifespan(app: FastAPI):
     # Every IngestorAgent call finds app.state.st_model already populated.
     print("[startup] SentenceTransformer loaded — all-MiniLM-L6-v2")
 
+    load_reranker(settings.reranker_model)
+    # Load the cross-encoder reranker model into core.reranker._reranker.
+    # Called here — once, at startup, before any request is accepted.
+    # settings.reranker_model resolves to the RERANKER_MODEL env var,
+    # defaulting to "cross-encoder/ms-marco-MiniLM-L-6-v2".
+    # On first startup this downloads ~90MB from HuggingFace Hub.
+    # Subsequent restarts load from the container's HuggingFace cache.
+    # load_reranker() emits two log lines visible in docker compose logs:
+    #   [startup] Loading reranker model: cross-encoder/...
+    #   [startup] Reranker model loaded successfully
+    print(f"[startup] CrossEncoder loaded — {settings.reranker_model}")
+
     print("[startup] complete — accepting requests")
 
     yield
@@ -142,6 +156,8 @@ app = FastAPI(
 
 app.include_router(session_router,   prefix="/session",   tags=["session"])
 app.include_router(documents_router, prefix="/documents", tags=["documents"])
+app.include_router(chat_router, prefix="/ws", tags=["chat"])
+
 
 
 # ---------------------------------------------------------------------------
