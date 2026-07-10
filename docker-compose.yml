@@ -264,6 +264,8 @@ services:
     container_name: streamlit
     environment:
       APP_ENV: ${APP_ENV}
+    volumes:
+      - ./streamlit:/app
     depends_on:
       # Streamlit depends on both FastAPI instances being healthy
       # before it starts. In later phases the frontend will call
