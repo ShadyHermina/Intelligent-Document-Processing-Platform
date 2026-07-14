@@ -84,4 +84,4 @@ EXPOSE 8501
 #  instead of asking the Linux kernel for inotify filesystem events 
 #  (which the Windows → WSL2 → Docker bind-mount chain silently drops), 
 #  Streamlit checks file modification timestamps on a timer.
-CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true", "--server.fileWatcherType=poll"]
+CMD ["streamlit", "run", "app.py", "--server.address=0.0.0.0", "--server.port=8501", "--server.headless=true", "--server.fileWatcherType=poll", "--server.maxUploadSize=20"]
