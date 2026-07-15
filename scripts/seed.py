@@ -16,8 +16,14 @@ Expects:
 
 import subprocess
 import sys
-import uuid
 import hashlib
+
+from uuid6 import uuid7
+# Requires `pip install uuid6` on whatever host runs this script — it is
+# NOT in any requirements.txt because this script runs outside Docker
+# entirely (see module docstring: it shells out to `docker exec`, it
+# doesn't run inside a container itself). If you set this project up on
+# a fresh machine, `pip install uuid6` before running this script.
 
 # ------------------------------------------------------------
 # Configuration
@@ -27,9 +33,9 @@ CONTAINER_NAME = "postgres"
 PG_USER        = "idp_user"
 PG_DATABASE    = "idp_db"
 
-TEST_TENANT_NAME   = "IDPP Test Tenant"
-TEST_PASSPHRASE    = "correct-horse-battery-staple"
-TEST_TENANT_ID     = str(uuid.uuid4())
+TEST_TENANT_NAME   = "Meridian Logistics"
+TEST_PASSPHRASE    = "river-canyon-forge-42"
+TEST_TENANT_ID     = str(uuid7())
 
 # ------------------------------------------------------------
 # Helpers
@@ -49,6 +55,7 @@ def run_sql(sql: str, description: str) -> subprocess.CompletedProcess:
             "-U", PG_USER,
             "-d", PG_DATABASE,
             "-v", "ON_ERROR_STOP=1",
+            "-q",
             "-t",
             "-A",
             "-F", "|"
@@ -80,13 +87,39 @@ VALUES (
     '{phrase_hash}',
     TRUE
 )
-ON CONFLICT (access_phrase_hash) DO NOTHING;
+ON CONFLICT (access_phrase_hash) DO NOTHING
+RETURNING id;
 """
-    run_sql(sql, "INSERT test tenant")
+    result = run_sql(sql, "INSERT test tenant")
+    inserted_id = result.stdout.strip()
+
+    if not inserted_id:
+        print("[ERROR] Tenant insert affected 0 rows.")
+        print("        A tenant with this passphrase hash already exists in the database.")
+        print("        Either the database wasn't actually wiped before seeding, or this")
+        print("        script has already been run once against it.")
+        print(f"        Passphrase in use: {TEST_PASSPHRASE!r}")
+        print("        Run this to see the existing tenant, then decide whether to reuse")
+        print("        it or wipe the database (docker compose down -v) and re-seed:")
+        print(f'        docker exec {CONTAINER_NAME} psql -U {PG_USER} -d {PG_DATABASE} '
+              f'-c "SELECT id, name, created_at FROM tenants WHERE access_phrase_hash = '
+              f"'{phrase_hash}';\"")
+        sys.exit(1)
+
+    if inserted_id != TEST_TENANT_ID:
+        # Should be unreachable — RETURNING id can only return the row we
+        # just inserted, using the id we supplied. Guarding anyway in case
+        # a future change (trigger, different conflict target) breaks that
+        # assumption silently.
+        print("[ERROR] Insert returned an unexpected id — this should not happen.")
+        print(f"        Expected: {TEST_TENANT_ID}")
+        print(f"        Got:      {inserted_id}")
+        sys.exit(1)
+
     print(f"[OK]    Tenant inserted.")
-    print(f"        ID:   {TEST_TENANT_ID}")
+    print(f"        ID:   {inserted_id}")
     print(f"        Name: {TEST_TENANT_NAME}")
-    print(f"        Hash: {hash_passphrase(TEST_PASSPHRASE)}")
+    print(f"        Hash: {phrase_hash}")
 
 
 def verify_hash_lookup():
