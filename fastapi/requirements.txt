@@ -1,5 +1,11 @@
 fastapi==0.115.12
 uvicorn[standard]==0.34.2
+uuid6==2025.0.1
+# Provides uuid7() — time-ordered UUIDs used for all application-generated
+# primary keys (documents.id, chunks.id, Qdrant point_id). Python's stdlib
+# uuid module does not gain uuid7() until 3.14; we're pinned to 3.11-slim
+# (see Dockerfile), so we take it from this small, actively maintained
+# package rather than hand-rolling the RFC 9562 bit-layout ourselves.
 pydantic==2.9.2
 pydantic-settings==2.9.1
 qdrant-client==1.13.3

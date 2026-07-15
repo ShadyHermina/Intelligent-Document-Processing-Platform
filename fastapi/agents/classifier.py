@@ -25,11 +25,11 @@
 #   audit_log.*                  one row on pipeline completion
 
 import json
-import uuid
 from typing import List
 
 from fastapi import FastAPI
 from openai import AsyncOpenAI
+from uuid6 import uuid7
 
 from core.config import get_settings
 from core.database import get_pool
@@ -286,7 +286,7 @@ class ClassifierAgent:
                         $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12
                     )
                     """,
-                    str(uuid.uuid4()),  # $1  id — new UUID for PostgreSQL PK
+                    str(uuid7()),  # $1  id — new UUID for PostgreSQL PK
                     payload.document_id,# $2  document_id
                     payload.tenant_id,  # $3  tenant_id
                     chunk.chunk_index,  # $4  chunk_index

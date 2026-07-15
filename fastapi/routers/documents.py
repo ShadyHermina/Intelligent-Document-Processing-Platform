@@ -17,11 +17,11 @@
 
 import hashlib
 import json
-import uuid
 
 import asyncpg
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
 from pydantic import BaseModel
+from uuid6 import uuid7
 
 from core.database import get_pool
 from dependencies.auth import TenantContext, get_current_tenant
@@ -241,7 +241,7 @@ async def upload_document(
 
     # ── Step 5: Insert document row with status='pending' ─────────────────
 
-    document_id = str(uuid.uuid4())
+    document_id = str(uuid7())
 
     async with pool.acquire() as conn:
         await conn.execute(

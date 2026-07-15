@@ -1,4 +1,10 @@
 fastmcp==2.3.4
+uuid6==2025.0.1
+# Not called directly by any FastMCP tool — but shared/embedding_service.py
+# is bind-mounted into this container too (docker-compose.yml) and imports
+# uuid6 at module level. Without this, `from shared.embedding_service import
+# embed_and_query` in server.py would fail at import time, even though this
+# container never calls the uuid7()-using function (embed_and_store).
 pydantic==2.9.2
 openai==1.78.0
 qdrant-client==1.13.3

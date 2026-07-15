@@ -1,10 +1,10 @@
 # shared/embedding_service.py
 
 import os
-import uuid
 from typing import List
 
 from openai import AsyncOpenAI
+from uuid6 import uuid7
 
 from shared.qdrant_store import get_client, upsert_point, search_with_tenant
 
@@ -105,7 +105,7 @@ async def embed_and_store(
     point_ids: List[str] = []
 
     for chunk, vector in zip(chunks, vectors):
-        point_id = str(uuid.uuid4())
+        point_id = str(uuid7())
         point_ids.append(point_id)
 
         upsert_point(
