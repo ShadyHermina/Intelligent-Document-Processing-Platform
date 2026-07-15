@@ -9,8 +9,16 @@ uuid6==2025.0.1
 pydantic==2.9.2
 pydantic-settings==2.9.1
 qdrant-client==1.13.3
-asyncpg==0.29.0
+asyncpg==0.30.0
 python-dotenv==1.1.0
+alembic==1.14.1
+psycopg2-binary==2.9.10
+# Both used exclusively by the new alembic/ migration framework (see
+# alembic/env.py). psycopg2-binary is a SYNC driver, used only when the
+# `alembic` CLI runs as a one-shot process — it never touches the running
+# FastAPI app, which continues to use asyncpg for all runtime queries.
+# This replaces scripts/phase6_migrate.py and scripts/add_sessions_table.py
+# going forward; those two files are kept for historical reference only.
 httpx==0.28.1
 openai==1.78.0
 python-multipart==0.0.20
