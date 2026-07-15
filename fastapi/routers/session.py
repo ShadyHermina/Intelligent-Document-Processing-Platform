@@ -54,11 +54,19 @@ class SessionInitResponse(BaseModel):
     """
     Response body for a successful POST /api/session/init.
 
-    Only the session token is returned. The tenant_id, tenant name,
-    and expiry time are deliberately excluded — the token is opaque
-    and the client needs to know nothing about what it represents.
+    Returns the session token plus tenant_name. tenant_name is included
+    so the client can display it immediately without a second round-trip
+    to GET /me — session_init() already resolves it from the same query
+    that validates the passphrase (see Step 2 below), so returning it
+    here costs nothing extra.
+
+    tenant_id is still deliberately excluded — the client has no
+    legitimate need for the raw tenant UUID, only its display name.
+    GET /me remains available separately for any client that needs to
+    verify an existing token without re-authenticating.
     """
     session_token: str
+    tenant_name: str
 
 
 class SessionMeResponse(BaseModel):
@@ -243,11 +251,11 @@ async def session_init(body: SessionInitRequest, request: Request):
         # This row, combined with the failed-attempt rows, gives operators
         # a complete picture of authentication activity per tenant.
 
-    # Step 5 — return the token
-    return SessionInitResponse(session_token=token)
-    # Only the token is returned. tenant_id and tenant_name stay
-    # on the server. The client has a random string that means nothing
-    # without the sessions table to look it up in.
+    # Step 5 — return the token and tenant_name
+    return SessionInitResponse(session_token=token, tenant_name=tenant_name)
+    # tenant_name was already resolved in Step 2's query — returning it
+    # here is free, no extra database round-trip. tenant_id stays
+    # server-side; the client never sees the raw UUID.
 
 
 # ---------------------------------------------------------------------------

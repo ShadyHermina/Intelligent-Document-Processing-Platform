@@ -91,14 +91,6 @@ def connect() -> None:
     # on_click callbacks receive no arguments from the button itself.
     access_phrase = st.session_state.get("access_phrase_input", "").strip()
 
-    # Guard: empty access_phrase.
-    # We check before making any network call. st.error() inside a
-    # callback still renders — Streamlit queues the message and
-    # displays it on the rerun that follows the callback.
-    if not access_phrase:
-        st.error("Please enter an access phrase.")
-        return
-
     # Every network call is wrapped in try/except.
     # The constraint: the UI must never crash on API errors.
     # httpx.RequestError covers connection failures (nginx down,
@@ -123,28 +115,17 @@ def connect() -> None:
         response.raise_for_status()
 
         # .json() parses the response body as JSON and returns a dict.
-        # We expect: {"session_token": "..."}
+        # We expect: {"session_token": "...", "tenant_name": "..."}
         data  = response.json()
-        session_token = data["session_token"]
 
-        # Second call: get tenant name using the token we just received.
-        # GET /session/me requires the Authorization header — this is
-        # the first use of the Bearer token pattern that every subsequent
-        # authenticated call will also follow.
-        me_response = httpx.get(
-            f"{API_BASE}/session/me",
-            headers={"Authorization": f"Bearer {session_token}"},
-            timeout=10.0,
-        )
-        me_response.raise_for_status()
-        me_data = me_response.json()
-
-        # Write both values to session_state only after both calls
-        # succeed. If the second call fails, session_token stays None
-        # and the user stays on the login screen — no half-authenticated
-        # state is possible.
-        st.session_state.session_token = session_token
-        st.session_state.tenant_name   = me_data["tenant_name"]
+        # tenant_name comes directly from /session/init now — session_init()
+        # already resolves it from the same query that validates the
+        # passphrase, so no second call to GET /session/me is needed here.
+        # GET /session/me still exists in the API for any client that needs
+        # to verify an existing token without re-authenticating — it's just
+        # no longer part of this login flow.
+        st.session_state.session_token = data["session_token"]
+        st.session_state.tenant_name   = data["tenant_name"]
 
     except httpx.HTTPStatusError as e:
         # The server responded but with an error status.
