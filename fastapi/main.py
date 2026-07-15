@@ -86,11 +86,6 @@ async def lifespan(app: FastAPI):
     # it at module level would slow every script that imports from main.py.
     # Importing inside lifespan defers the cost to startup only.
     #
-    # Why app.state and not a module-level variable?
-    # app.state is scoped to the app instance — test cases that create
-    # isolated app instances get isolated model state. A module-level
-    # variable would be shared across all instances in the same process.
-    #
     # This runs before yield — before FastAPI accepts any requests.
     # Every IngestorAgent call finds app.state.st_model already populated.
     print("[startup] SentenceTransformer loaded — all-MiniLM-L6-v2")
@@ -131,9 +126,6 @@ async def lifespan(app: FastAPI):
 # ---------------------------------------------------------------------------
 
 settings = get_settings()
-# We call get_settings() here to read the instance_id for the app title.
-# Because of lru_cache, this is the same Settings object that lifespan
-# and all routers will use — no re-reading of environment variables.
 
 app = FastAPI(
     title="Intelligent Document Processing Platform — API",
@@ -216,34 +208,3 @@ async def root():
         "instance": settings.instance_id,
         "docs": "/docs",
     }
-
-# ---------------------------------------------------------------------------
-# Temporary debug endpoint
-# ---------------------------------------------------------------------------
-
-@app.get("/debug/headers")
-async def debug_headers(request: Request):
-    """
-    Returns all headers FastAPI received from Nginx.
-    Used to verify real client IP is being forwarded correctly.
-    Remove this endpoint after Phase 4 verification is complete.
-    """
-    return {
-        "headers": dict(request.headers),
-        "client_host": request.client.host,
-    }
-
-from fastapi import WebSocket
-
-@app.websocket("/echo")
-async def websocket_echo(websocket: WebSocket):
-    """
-    Temporary WebSocket echo endpoint for Phase 4 verification only.
-    Accepts a connection, receives one message, echoes it back, then closes.
-    Remove this endpoint after Phase 4 verification is complete.
-    """
-    await websocket.accept()
-    message = await websocket.receive_text()
-    await websocket.send_text(f"echo: {message}")
-    await websocket.close()
-# ---------------------------------------------------------------------------

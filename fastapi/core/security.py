@@ -102,11 +102,9 @@ def generate_session_token() -> str:
     Why 32 bytes?
 
     32 bytes = 256 bits of entropy.
-    The probability of two tokens colliding is 1 in 2^256 —
-    a number larger than the atoms in the observable universe.
+    The probability of two tokens colliding is 1 in 2^256
     The probability of an attacker guessing a valid token by brute
-    force is equally negligible — even testing a billion tokens per
-    second for a billion years would not produce a match.
+    force is equally negligible
 
     Why token_urlsafe and not token_hex?
 

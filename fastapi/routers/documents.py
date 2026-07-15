@@ -307,7 +307,7 @@ async def upload_document(
 
     except ValueError as exc:
         # ValueError from run_pipeline() means the file could not be
-        # parsed — empty file, image-only PDF, corrupted content.
+        # parsed — image-only PDF, corrupted content.
         # Update status to reflect the failure and return 422.
         async with pool.acquire() as conn:
             await conn.execute(
@@ -406,7 +406,7 @@ async def get_document_status(
         document_id = str(row["id"]),
         status      = row["status"],
         filename    = row["filename"],
-        doc_type    = row["doc_type"],   # None until Agent 2 completes
+        doc_type    = row["doc_type"],
         uploaded_at = row["uploaded_at"].isoformat(),
         # asyncpg returns TIMESTAMPTZ as a Python datetime object.
         # .isoformat() converts to "2024-01-15T09:23:41.123456+00:00"

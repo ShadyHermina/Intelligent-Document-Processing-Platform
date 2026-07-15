@@ -98,8 +98,7 @@ class IngestorAgent:
         st_model = self.app.state.st_model
         # app.state.st_model was set in main.py lifespan startup.
         # Reading it here — not importing sentence_transformers — keeps
-        # this file independent of the heavy ML library. The model object
-        # is passed into run_pipeline() as a plain argument.
+        # this file independent of the heavy ML library.
 
         # ── Run the three-level chunking pipeline ────────────────────────
 
